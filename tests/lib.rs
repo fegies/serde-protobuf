@@ -157,7 +157,7 @@ macro_rules! roundtrip {
         let descriptors = descriptor::Descriptors::from_proto(&proto);
 
         let mut $v = <$t>::new();
-        $s;
+        $s
         let bytes = protobuf::Message::write_to_bytes(&mut $v).unwrap();
         let input = protobuf::CodedInputStream::from_bytes(&bytes);
 

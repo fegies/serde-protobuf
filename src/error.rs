@@ -16,6 +16,11 @@ pub enum Error {
     /// A native protobuf error.
     #[fail(display = "protobuf error")]
     Protobuf(#[cause] protobuf::ProtobufError),
+
+    /// A native quick-protobuf error
+    #[fail(display = "quick-protobuf err")]
+    QuickProtobuf(#[cause] quick_protobuf::Error),
+
     /// The end of stream was reached.
     #[fail(display = "end of stream")]
     EndOfStream,
@@ -55,6 +60,12 @@ pub enum Error {
         /// The user-defined error message.
         message: String,
     },
+}
+
+impl From<quick_protobuf::Error> for Error {
+    fn from(e: quick_protobuf::Error) -> Self {
+        Error::QuickProtobuf(e)
+    }
 }
 
 /// A result whose error type is `CompatError`.

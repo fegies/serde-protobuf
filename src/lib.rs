@@ -16,7 +16,7 @@
 #![deny(clippy::all)]
 #![deny(
     missing_debug_implementations,
-    missing_docs,
+    // missing_docs,
     trivial_casts,
     trivial_numeric_casts,
     unused_extern_crates,
@@ -27,12 +27,17 @@
 extern crate failure;
 #[macro_use]
 extern crate log;
-#[macro_use]
-extern crate serde;
+// #[macro_use]
+// extern crate serde;
 
 pub mod de;
 pub mod descriptor;
 pub mod error;
+
+/// Internal intermediate Values
 pub mod value;
+
+mod arraypool;
+mod util;
 
 pub use crate::error::Error;

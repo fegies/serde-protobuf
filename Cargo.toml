@@ -17,6 +17,7 @@ linked-hash-map = "0.5.1"
 log = "0.4.6"
 protobuf = "2.3.0"
 serde = "1.0.86"
+quick-protobuf = "0.8.0"
 
 [dev-dependencies]
 serde-value = "0.5.3"
