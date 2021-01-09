@@ -1,11 +1,13 @@
 use core::panic;
 
-use crate::descriptor::{Descriptors, FieldDescriptor, FieldType, MessageDescriptor};
+use crate::descriptor::{Descriptors, FieldDescriptor, FieldLabel, FieldType, MessageDescriptor};
 use quick_protobuf::BytesReader;
 
 use crate::{
     arraypool::ArrayPool, de::CurrentMessageDescriptors, error::Result, util::retain_last_by_key,
 };
+
+use super::owned;
 
 pub enum SingleFieldValue<'input> {
     /// A boolean value.
@@ -35,6 +37,8 @@ pub enum SingleFieldValue<'input> {
     },
     /// A null value (message default value)
     Null,
+    /// A Default value borrowed from the descriptor
+    BorrowedDefaultValue { inner: &'input owned::Value },
 }
 
 pub type RepeatedFieldValue<'input> = Vec<SingleFieldValue<'input>>;
@@ -100,34 +104,44 @@ fn compute_default_value_for_field<'input>(
     field_descriptor: &'input FieldDescriptor,
     descriptors: &Descriptors,
 ) -> Field<'input, SingleFieldValue<'input>> {
-    let value = match field_descriptor.field_type(descriptors) {
-        FieldType::UnresolvedMessage(_) => {
-            panic!("unresolved message default value")
-        }
-        FieldType::UnresolvedEnum(_) => {
-            panic!("unresolved enum default value")
-        }
-        FieldType::Double => SingleFieldValue::F64(Default::default()),
-        FieldType::Float => SingleFieldValue::F32(Default::default()),
-        FieldType::Int64 => SingleFieldValue::I64(Default::default()),
-        FieldType::UInt64 => SingleFieldValue::U64(Default::default()),
-        FieldType::Int32 => SingleFieldValue::I32(Default::default()),
-        FieldType::Fixed64 => SingleFieldValue::U64(Default::default()),
-        FieldType::Fixed32 => SingleFieldValue::U32(Default::default()),
-        FieldType::Bool => SingleFieldValue::Bool(Default::default()),
-        FieldType::String => SingleFieldValue::String(Default::default()),
-        FieldType::Group => {
-            panic!("group default value")
-        }
-        FieldType::Message(_) => SingleFieldValue::Null,
-        FieldType::Bytes => SingleFieldValue::Bytes(Default::default()),
-        FieldType::UInt32 => SingleFieldValue::U32(Default::default()),
-        FieldType::Enum(_) => SingleFieldValue::Enum(Default::default()),
-        FieldType::SFixed32 => SingleFieldValue::I32(Default::default()),
-        FieldType::SFixed64 => SingleFieldValue::I64(Default::default()),
-        FieldType::SInt32 => SingleFieldValue::I32(Default::default()),
-        FieldType::SInt64 => SingleFieldValue::I64(Default::default()),
-    };
+    let value = field_descriptor
+        .default_value()
+        .map(|inner| SingleFieldValue::BorrowedDefaultValue { inner })
+        .or_else(|| {
+            if field_descriptor.field_label() == FieldLabel::Optional {
+                Some(SingleFieldValue::Null)
+            } else {
+                None
+            }
+        })
+        .unwrap_or_else(|| match field_descriptor.field_type(descriptors) {
+            FieldType::UnresolvedMessage(_) => {
+                panic!("unresolved message default value")
+            }
+            FieldType::UnresolvedEnum(_) => {
+                panic!("unresolved enum default value")
+            }
+            FieldType::Double => SingleFieldValue::F64(Default::default()),
+            FieldType::Float => SingleFieldValue::F32(Default::default()),
+            FieldType::Int64 => SingleFieldValue::I64(Default::default()),
+            FieldType::UInt64 => SingleFieldValue::U64(Default::default()),
+            FieldType::Int32 => SingleFieldValue::I32(Default::default()),
+            FieldType::Fixed64 => SingleFieldValue::U64(Default::default()),
+            FieldType::Fixed32 => SingleFieldValue::U32(Default::default()),
+            FieldType::Bool => SingleFieldValue::Bool(Default::default()),
+            FieldType::String => SingleFieldValue::String(Default::default()),
+            FieldType::Group => {
+                panic!("group default value")
+            }
+            FieldType::Message(_) => SingleFieldValue::Null,
+            FieldType::Bytes => SingleFieldValue::Bytes(Default::default()),
+            FieldType::UInt32 => SingleFieldValue::U32(Default::default()),
+            FieldType::Enum(_) => SingleFieldValue::Enum(Default::default()),
+            FieldType::SFixed32 => SingleFieldValue::I32(Default::default()),
+            FieldType::SFixed64 => SingleFieldValue::I64(Default::default()),
+            FieldType::SInt32 => SingleFieldValue::I32(Default::default()),
+            FieldType::SInt64 => SingleFieldValue::I64(Default::default()),
+        });
     Field {
         tag: field_descriptor.number() as u32,
         descriptor: field_descriptor,

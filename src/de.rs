@@ -67,7 +67,7 @@
 use std::io::Read;
 
 use crate::{
-    descriptor::{Descriptors, FieldDescriptor, MessageDescriptor},
+    descriptor::{Descriptors, FieldDescriptor, FieldLabel, MessageDescriptor},
     error::CompatResult,
 };
 use error::CompatError;
@@ -390,13 +390,24 @@ where
         V: Visitor<'input>,
     {
         match &self.field.value {
-            GeneralizedFieldValue::Single(value) => visit_value(
-                self.descriptors.all_descriptors,
-                self.field.descriptor,
-                value,
-                self.pool,
-                visitor,
-            ),
+            GeneralizedFieldValue::Single(value) => {
+                if self.field.descriptor.field_label() == FieldLabel::Optional {
+                    visitor.visit_some(ValueDeserializer {
+                        descriptors: self.descriptors,
+                        field: value,
+                        field_descriptor: self.field.descriptor,
+                        pool: self.pool,
+                    })
+                } else {
+                    visit_value(
+                        self.descriptors.all_descriptors,
+                        self.field.descriptor,
+                        value,
+                        self.pool,
+                        visitor,
+                    )
+                }
+            }
             GeneralizedFieldValue::Repeated(vec) => visitor.visit_seq(RepeatedValueVisitor {
                 descriptors: self.descriptors,
                 field_descriptor: self.field.descriptor,
@@ -499,16 +510,7 @@ where
         SingleFieldValue::Bytes(v) => visitor.visit_borrowed_bytes(v),
         SingleFieldValue::String(v) => visitor.visit_borrowed_str(v),
         SingleFieldValue::Enum(e) => {
-            if let descriptor::FieldType::Enum(d) = field_descriptor.field_type(all_descriptors) {
-                d.value_by_number(e)
-                    .ok_or_else(|| Error::UnknownEnumValue { value: e }.into())
-                    .and_then(|enum_descriptor| visitor.visit_str(enum_descriptor.name()))
-            } else {
-                Err(Error::Custom {
-                    message: "field and wire type mismatch".to_string(),
-                }
-                .into())
-            }
+            visit_enum_value(e, field_descriptor, all_descriptors, visitor)
         }
         SingleFieldValue::LazyMessage { descriptor, data } => {
             let deserializer = InnerMessageDeserializer {
@@ -522,5 +524,41 @@ where
             serde::de::Deserializer::deserialize_any(deserializer, visitor)
         }
         SingleFieldValue::Null => visitor.visit_none(),
+        SingleFieldValue::BorrowedDefaultValue { inner } => match inner {
+            value::Value::Bool(b) => visitor.visit_bool(*b),
+            value::Value::I32(v) => visitor.visit_i32(*v),
+            value::Value::I64(v) => visitor.visit_i64(*v),
+            value::Value::U32(v) => visitor.visit_u32(*v),
+            value::Value::U64(v) => visitor.visit_u64(*v),
+            value::Value::F32(v) => visitor.visit_f32(*v),
+            value::Value::F64(v) => visitor.visit_f64(*v),
+            value::Value::Bytes(b) => visitor.visit_borrowed_bytes(&b),
+            value::Value::String(s) => visitor.visit_borrowed_str(&s),
+            value::Value::Enum(e) => {
+                visit_enum_value(*e, field_descriptor, all_descriptors, visitor)
+            }
+            value::Value::Message(_) => panic!("unsupported default message _value_"),
+        },
+    }
+}
+
+fn visit_enum_value<'input, V>(
+    value: i32,
+    field_descriptor: &FieldDescriptor,
+    all_descriptors: &'input Descriptors,
+    visitor: V,
+) -> CompatResult<V::Value>
+where
+    V: Visitor<'input>,
+{
+    if let descriptor::FieldType::Enum(d) = field_descriptor.field_type(all_descriptors) {
+        d.value_by_number(value)
+            .ok_or_else(|| Error::UnknownEnumValue { value }.into())
+            .and_then(|enum_descriptor| visitor.visit_str(enum_descriptor.name()))
+    } else {
+        Err(Error::Custom {
+            message: "field and wire type mismatch".to_string(),
+        }
+        .into())
     }
 }
